@@ -1,0 +1,4 @@
+__pycache__/
+NOW.md
+# browser cookie exports must never be committed
+cookies*.txt

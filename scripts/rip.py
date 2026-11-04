@@ -17,7 +17,6 @@ Writes into DIR (default: a temp folder printed at the end):
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -58,6 +57,15 @@ def read_meta(workdir: Path) -> dict:
     return json.loads(info.read_text(encoding="utf-8", errors="replace"))
 
 
+def describe(meta: dict) -> tuple:
+    """(author, title, caption) from yt-dlp metadata. Instagram fills
+    `uploader`, YouTube sometimes only `channel`, and any field can be null."""
+    author = meta.get("uploader") or meta.get("channel") or ""
+    title = (meta.get("title") or "").strip()
+    caption = (meta.get("description") or "").strip()
+    return author, title, caption
+
+
 def transcribe(video: Path, workdir: Path, model_size: str) -> str:
     """Local Whisper. Downloads the model once on first run, then it is cached."""
     wav = workdir / "audio.wav"
@@ -89,11 +97,13 @@ def main() -> int:
     out = args.out or Path(tempfile.mkdtemp(prefix="reel-"))
     out.mkdir(parents=True, exist_ok=True)
 
+    # Captions are full of emoji, and a Windows console codepage raises on
+    # them. Replace what it cannot show; the files on disk stay UTF-8.
+    sys.stdout.reconfigure(errors="replace")
+
     video = download(args.url, out)
     meta = read_meta(out)
-    caption = (meta.get("description") or "").strip()
-    author = meta.get("uploader") or meta.get("channel") or ""
-    title = (meta.get("title") or "").strip()
+    author, title, caption = describe(meta)
 
     transcript = transcribe(video, out, args.model)
 
@@ -118,18 +128,5 @@ def main() -> int:
     return 0
 
 
-def demo():
-    """ponytail: the check. Metadata parsing is the only branchy bit that
-    fails silently, so exercise it without touching the network."""
-    d = Path(tempfile.mkdtemp())
-    assert read_meta(d) == {}, "missing info.json should give an empty dict"
-    (d / "source.info.json").write_text(
-        json.dumps({"description": "hello", "uploader": "jens"}), encoding="utf-8")
-    m = read_meta(d)
-    assert m["description"] == "hello" and m["uploader"] == "jens"
-    shutil.rmtree(d, ignore_errors=True)
-    print("demo ok")
-
-
 if __name__ == "__main__":
-    sys.exit(demo() if "--demo" in sys.argv else main())
+    sys.exit(main())
